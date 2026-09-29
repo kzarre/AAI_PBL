@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moderation Dashboard</title>
+<style>
+  :root {
+    --bg: #f3f3f1; --surface: #fcfcfb; --border: #e2e1dc;
+    --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #8a8983; --track: #ebeae6;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+    --accent: #2f6fd6; --on-accent: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111110; --surface: #1a1a19; --border: #2e2e2c;
+      --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #8f8e86; --track: #2a2a28;
+      --accent: #6c9cf0; --on-accent: #0b0b0b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  header a { color: var(--accent); text-decoration: none; }
+  .muted { color: var(--ink-2); }
+  .small { font-size: 12px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; display: grid; gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .card h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .card h2 .spacer { flex: 1; }
+
+  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+  .tile .label { color: var(--ink-2); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .tile .value { font-size: 28px; font-weight: 650; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tile .sub { color: var(--ink-3); font-size: 12px; }
+
+  /* Status marker: color + icon, always next to a text label */
+  .dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; flex: none; }
+  .s-green, .s-good { background: var(--good); }
+  .s-yellow, .s-watch { background: var(--warning); color: #0b0b0b; }
+  .s-risky { background: var(--serious); color: #0b0b0b; }
+  .s-severe, .s-dangerous { background: var(--critical); }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; white-space: nowrap; }
+
+  .dist { display: flex; gap: 2px; height: 28px; }
+  .dist .seg { min-width: 4px; border-radius: 4px; cursor: default; }
+  .dist .empty { flex: 1; background: var(--track); border-radius: 4px; }
+  .legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .legend > span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 12px; }
+  .legend b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; align-items: start; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  tbody tr.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .score { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+  .score .track { flex: 1; height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; }
+  .score .fill { height: 100%; border-radius: 0 4px 4px 0; }
+  .score .n { width: 28px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  select, input, textarea, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  button { cursor: pointer; background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+  button.link { background: none; border: none; color: var(--accent); padding: 0; font-weight: 500; }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  form textarea { grid-column: 1 / -1; min-height: 60px; resize: vertical; }
+  form .actions { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; }
+  .result { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; display: none; }
+  .result.show { display: block; }
+  .error { color: var(--critical); }
+
+  .feed { display: grid; gap: 10px; max-height: 560px; overflow-y: auto; }
+  .msg { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .msg .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .msg .who { font-weight: 600; }
+  .msg .text { margin: 6px 0 4px; }
+  .empty-state { color: var(--ink-3); padding: 16px 0; text-align: center; }
+
+  #tooltip { position: fixed; pointer-events: none; background: var(--ink); color: var(--surface); padding: 6px 10px; border-radius: 6px; font-size: 12px; opacity: 0; transition: opacity .1s; z-index: 10; }
+  @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, 1fr); } .cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cyberbullying Moderation Dashboard</h1>
+  <span class="badge" id="health"><span class="dot" style="background:var(--ink-3)"></span>checking…</span>
+  <span class="muted small" id="updated"></span>
+  <a href="/docs" target="_blank">API docs ↗</a>
+</header>
+
+<main>
+  <section class="tiles">
+    <div class="card tile"><div class="label">Users</div><div class="value" id="t-users">–</div><div class="sub" id="t-users-sub">&nbsp;</div></div>
+    <div class="card tile"><div class="label">Messages classified</div><div class="value" id="t-msgs">–</div><div class="sub">&nbsp;</div></div>
+    <div class="card tile"><div class="label"><span class="dot s-green">✓</span>Green</div><div class="value" id="t-green">–</div><div class="sub" id="t-green-sub">&nbsp;</div></div>
+    <div class="card tile"><div class="label"><span class="dot s-yellow">!</span>Yellow</div><div class="value" id="t-yellow">–</div><div class="sub" id="t-yellow-sub">&nbsp;</div></div>
+    <div class="card tile"><div class="label"><span class="dot s-severe">✕</span>Severe</div><div class="value" id="t-severe">–</div><div class="sub" id="t-severe-sub">&nbsp;</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Label distribution <span class="muted small" style="font-weight:400">all classified messages</span></h2>
+    <div class="dist" id="dist"></div>
+    <div class="legend" id="dist-legend"></div>
+  </section>
+
+  <section class="cols">
+    <div class="card">
+      <h2>Users <span class="spacer"></span>
+        <label class="muted small" for="risk-filter">Risk level</label>
+        <select id="risk-filter">
+          <option value="">All</option><option value="good">Good</option><option value="watch">Watch</option>
+          <option value="risky">Risky</option><option value="dangerous">Dangerous</option>
+        </select>
+      </h2>
+      <table>
+        <thead><tr><th>User</th><th>Reputation</th><th>Risk</th><th class="num">Green</th><th class="num">Yellow</th><th class="num">Severe</th></tr></thead>
+        <tbody id="users"></tbody>
+      </table>
+      <div class="small muted" style="margin-top:8px">Click a user to see their messages.</div>
+    </div>
+
+    <div style="display:grid; gap:16px">
+      <div class="card">
+        <h2>Classify a message</h2>
+        <form id="classify">
+          <input name="sender_id" placeholder="Sender ID" value="u_101" required>
+          <input name="sender_name" placeholder="Sender name" value="Rohan" required>
+          <input name="target_id" placeholder="Target ID (optional)" value="u_202">
+          <input name="target_name" placeholder="Target name (optional)" value="Aman">
+          <textarea name="text" placeholder="Message text" required></textarea>
+          <div class="actions"><button type="submit" id="submit">Classify</button><span class="small muted" id="form-status"></span></div>
+        </form>
+        <div class="result" id="result"></div>
+      </div>
+
+      <div class="card">
+        <h2><span id="feed-title">Recent messages</span><span class="spacer"></span>
+          <button class="link small" id="clear-user" hidden>Show all</button></h2>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="tooltip"></div>
+
+<script>
+const LABELS = {
+  green:  { icon: "✓", text: "Green",  color: "var(--good)" },
+  yellow: { icon: "!", text: "Yellow", color: "var(--warning)" },
+  severe: { icon: "✕", text: "Severe", color: "var(--critical)" },
+};
+const RISK = {
+  good:      { icon: "✓", text: "Good",      color: "var(--good)" },
+  watch:     { icon: "!", text: "Watch",     color: "var(--warning)" },
+  risky:     { icon: "◆", text: "Risky",     color: "var(--serious)" },
+  dangerous: { icon: "✕", text: "Dangerous", color: "var(--critical)" },
+};
+
+const state = { users: [], selectedUser: null };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (n, total) => (total ? Math.round((n / total) * 100) : 0);
+const badge = (key, map) => `<span class="badge"><span class="dot s-${key}">${map[key].icon}</span>${map[key].text}</span>`;
+const nameOf = (id) => state.users.find((u) => u.id === id)?.name ?? id;
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = body?.detail;
+    throw new Error(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : res.statusText);
+  }
+  return body;
+}
+
+function renderStats(users) {
+  const sum = (key) => users.reduce((acc, u) => acc + u[key], 0);
+  const total = sum("total_messages");
+  const counts = { green: sum("green_count"), yellow: sum("yellow_count"), severe: sum("severe_count") };
+  const atRisk = users.filter((u) => u.risk_level === "risky" || u.risk_level === "dangerous").length;
+
+  $("t-users").textContent = users.length;
+  $("t-users-sub").textContent = `${atRisk} risky or dangerous`;
+  $("t-msgs").textContent = total;
+  for (const key of Object.keys(counts)) {
+    $(`t-${key}`).textContent = counts[key];
+    $(`t-${key}-sub`).textContent = `${pct(counts[key], total)}% of messages`;
+  }
+  renderDistribution(counts, total);
+}
+
+function renderDistribution(counts, total) {
+  const dist = $("dist");
+  if (!total) { dist.innerHTML = `<div class="empty"></div>`; }
+  else {
+    dist.innerHTML = Object.entries(counts).filter(([, n]) => n > 0).map(([key, n]) =>
+      `<div class="seg" style="flex:${n};background:${LABELS[key].color}" data-tip="${LABELS[key].text}: ${n} (${pct(n, total)}%)"></div>`).join("");
+  }
+  $("dist-legend").innerHTML = Object.entries(counts).map(([key, n]) =>
+    `<span><span class="dot s-${key}">${LABELS[key].icon}</span>${LABELS[key].text} <b>${n}</b> · ${pct(n, total)}%</span>`).join("");
+}
+
+function renderUsers() {
+  const filter = $("risk-filter").value;
+  const rows = state.users.filter((u) => !filter || u.risk_level === filter);
+  $("users").innerHTML = rows.length ? rows.map((u) => `
+    <tr data-id="${esc(u.id)}" class="${u.id === state.selectedUser ? "selected" : ""}">
+      <td><div>${esc(u.name)}</div><div class="small muted">${esc(u.id)}</div></td>
+      <td><div class="score" data-tip="Reputation ${u.reputation_score} / 100">
+        <div class="track"><div class="fill" style="width:${u.reputation_score}%;background:${RISK[u.risk_level].color}"></div></div>
+        <span class="n">${u.reputation_score}</span></div></td>
+      <td>${badge(u.risk_level, RISK)}</td>
+      <td class="num">${u.green_count}</td><td class="num">${u.yellow_count}</td><td class="num">${u.severe_count}</td>
+    </tr>`).join("") : `<tr><td colspan="6" class="empty-state">No users${filter ? " at this risk level" : " yet"}.</td></tr>`;
+}
+
+function renderFeed(messages) {
+  const user = state.selectedUser;
+  $("feed-title").textContent = user ? `Messages for ${nameOf(user)}` : "Recent messages";
+  $("clear-user").hidden = !user;
+  $("feed").innerHTML = messages.length ? messages.map((m) => `
+    <div class="msg">
+      <div class="top">${badge(m.label, LABELS)}
+        <span class="who">${esc(nameOf(m.sender_id))}</span>
+        <span class="muted">→ ${m.target_id ? esc(nameOf(m.target_id)) : "<i>group</i>"}</span>
+        <span class="spacer" style="flex:1"></span>
+        <span class="small muted">${Math.round(m.confidence * 100)}% · ${new Date(m.created_at).toLocaleString()}</span></div>
+      <div class="text">“${esc(m.text)}”</div>
+      <div class="small muted">${esc(m.reason)} <b>Action:</b> ${esc(m.recommended_action)}</div>
+    </div>`).join("") : `<div class="empty-state">No messages yet. Classify one above.</div>`;
+}
+
+async function refresh() {
+  try {
+    const feedPath = state.selectedUser ? `/api/v1/users/${encodeURIComponent(state.selectedUser)}/messages?limit=50` : "/api/v1/messages?limit=50";
+    const [users, messages] = await Promise.all([api("/api/v1/users"), api(feedPath)]);
+    state.users = users;
+    renderStats(users);
+    renderUsers();
+    renderFeed(messages);
+    setHealth(true);
+    $("updated").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    setHealth(false);
+  }
+}
+
+function setHealth(ok) {
+  $("health").innerHTML = ok
+    ? `<span class="dot s-good">✓</span>API online`
+    : `<span class="dot s-dangerous">✕</span>API offline`;
+}
+
+function renderResult(r) {
+  const rep = r.sender_reputation;
+  $("result").className = "result show";
+  $("result").innerHTML = `
+    <div class="top" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${badge(r.label, LABELS)}
+      <span class="muted small">confidence ${Math.round(r.confidence * 100)}%</span></div>
+    <div style="margin:8px 0 4px">${esc(r.reason)}</div>
+    <div class="small"><b>Recommended action:</b> ${esc(r.recommended_action)}</div>
+    <div class="small" style="margin-top:6px;display:flex;gap:8px;align-items:center">
+      <b>${esc(rep.name)}</b> reputation now <b>${rep.score}</b> ${badge(rep.risk_level, RISK)}</div>`;
+}
+
+$("classify").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const f = new FormData(event.target);
+  const targetId = f.get("target_id").trim();
+  const payload = {
+    message_id: `dash_${Date.now()}`,
+    sender: { id: f.get("sender_id").trim(), name: f.get("sender_name").trim() },
+    target: targetId ? { id: targetId, name: f.get("target_name").trim() || targetId } : null,
+    text: f.get("text"),
+    timestamp: new Date().toISOString(),
+  };
+  $("submit").disabled = true;
+  $("form-status").textContent = "Classifying…";
+  try {
+    renderResult(await api("/api/v1/messages/classify", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }));
+    $("form-status").textContent = "";
+    event.target.elements.text.value = "";
+    await refresh();
+  } catch (err) {
+    $("form-status").innerHTML = `<span class="error">${esc(err.message)}</span>`;
+  } finally {
+    $("submit").disabled = false;
+  }
+});
+
+$("users").addEventListener("click", (event) => {
+  const row = event.target.closest("tr[data-id]");
+  if (!row) return;
+  state.selectedUser = row.dataset.id === state.selectedUser ? null : row.dataset.id;
+  refresh();
+});
+$("clear-user").addEventListener("click", () => { state.selectedUser = null; refresh(); });
+$("risk-filter").addEventListener("change", renderUsers);
+
+// Hover tooltip for any element with data-tip
+const tooltip = $("tooltip");
+document.addEventListener("mousemove", (event) => {
+  const target = event.target.closest("[data-tip]");
+  if (!target) { tooltip.style.opacity = 0; return; }
+  tooltip.textContent = target.dataset.tip;
+  tooltip.style.left = `${event.clientX + 12}px`;
+  tooltip.style.top = `${event.clientY + 12}px`;
+  tooltip.style.opacity = 1;
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
